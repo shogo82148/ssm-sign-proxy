@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -110,15 +111,9 @@ func NewRequest(req *http.Request) (*Request, error) {
 		}
 	}
 
-	var body strings.Builder
-	if _, err := io.Copy(&body, req.Body); err != nil {
+	body, isBase64, err := readAll(req.Body)
+	if err != nil {
 		return nil, err
-	}
-	var isBase64 bool
-	bodyString := body.String()
-	if !utf8.ValidString(bodyString) {
-		bodyString = base64.StdEncoding.EncodeToString([]byte(bodyString))
-		isBase64 = true
 	}
 
 	return &Request{
@@ -129,7 +124,79 @@ func NewRequest(req *http.Request) (*Request, error) {
 		Headers:                         h,
 		MultiValueHeaders:               map[string][]string(header),
 		IsBase64Encoded:                 isBase64,
-		Body:                            bodyString,
+		Body:                            body,
+	}, nil
+}
+
+// Request returns http.Request.
+func (req *Request) Request() (*http.Request, error) {
+	// build the body
+	var body io.Reader = strings.NewReader(req.Body)
+	if req.IsBase64Encoded {
+		body = base64.NewDecoder(base64.StdEncoding, body)
+	}
+
+	// build the query
+	var q url.Values
+	if len(req.MultiValueQueryStringParameters) > 0 {
+		q = url.Values(req.MultiValueQueryStringParameters)
+	} else {
+		q = url.Values{}
+		for k, v := range req.QueryStringParameters {
+			q.Set(k, v)
+		}
+	}
+
+	// build the headers
+	var h http.Header
+	if len(req.MultiValueHeaders) > 0 {
+		h = http.Header(req.MultiValueHeaders)
+	} else {
+		h = http.Header{}
+		for k, v := range req.Headers {
+			h.Set(k, v)
+		}
+	}
+
+	// build the target url
+	host := h.Get("Host")
+	u := url.URL{
+		Scheme:   "https", // we don't care of http.
+		Host:     host,
+		Path:     req.Path,
+		RawPath:  req.Path,
+		RawQuery: q.Encode(),
+	}
+
+	// build the request
+	httpreq, err := http.NewRequest(req.HTTPMethod, u.String(), body)
+	if err != nil {
+		return nil, err
+	}
+	httpreq.Header = h
+
+	return httpreq, nil
+}
+
+// NewResponse returns new Response.
+func NewResponse(resp *http.Response) (*Response, error) {
+	body, isBase64, err := readAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	h := map[string]string{}
+	for name := range resp.Header {
+		h[name] = resp.Header.Get(name)
+	}
+
+	return &Response{
+		StatusCode:        resp.StatusCode,
+		StatusDescription: resp.Status,
+		Headers:           h,
+		MultiValueHeaders: map[string][]string(resp.Header),
+		Body:              body,
+		IsBase64Encoded:   isBase64,
 	}, nil
 }
 
@@ -193,4 +260,17 @@ func removeConnectionHeaders(h http.Header) {
 			}
 		}
 	}
+}
+
+func readAll(r io.Reader) (string, bool, error) {
+	var body strings.Builder
+	if _, err := io.Copy(&body, r); err != nil {
+		return "", false, err
+	}
+	bodyString := body.String()
+	if !utf8.ValidString(bodyString) {
+		bodyString = base64.StdEncoding.EncodeToString([]byte(bodyString))
+		return bodyString, true, nil
+	}
+	return bodyString, false, nil
 }
