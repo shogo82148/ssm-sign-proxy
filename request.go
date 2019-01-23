@@ -3,7 +3,6 @@ package proxy
 import (
 	"encoding/base64"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -73,39 +72,8 @@ func NewRequest(req *http.Request) (*Request, error) {
 		}
 	}
 
-	header := cloneHeader(req.Header)
-	removeConnectionHeaders(header)
-	// Remove hop-by-hop headers to the backend. Especially
-	// important is "Connection" because we want a persistent
-	// connection, regardless of what the client sent to us.
-	for _, h := range hopHeaders {
-		hv := header.Get(h)
-		if hv == "" {
-			continue
-		}
-		if h == "Te" && hv == "trailers" {
-			// Issue 21096: tell backend applications that
-			// care about trailer support that we support
-			// trailers. (We do, but we don't go out of
-			// our way to advertise that unless the
-			// incoming client request thought it was
-			// worth mentioning)
-			continue
-		}
-		header.Del(h)
-	}
-
-	if clientIP, _, err := net.SplitHostPort(req.RemoteAddr); err == nil {
-		// If we aren't the first proxy retain prior
-		// X-Forwarded-For information as a comma+space
-		// separated list and fold multiple headers into one.
-		if prior, ok := header["X-Forwarded-For"]; ok {
-			clientIP = strings.Join(prior, ", ") + ", " + clientIP
-		}
-		header.Set("X-Forwarded-For", clientIP)
-	}
 	h := make(map[string]string)
-	for k, v := range header {
+	for k, v := range req.Header {
 		if len(v) > 0 {
 			h[k] = v[len(v)-1]
 		}
@@ -122,7 +90,7 @@ func NewRequest(req *http.Request) (*Request, error) {
 		QueryStringParameters:           q,
 		MultiValueQueryStringParameters: map[string][]string(query),
 		Headers:                         h,
-		MultiValueHeaders:               map[string][]string(header),
+		MultiValueHeaders:               map[string][]string(req.Header),
 		IsBase64Encoded:                 isBase64,
 		Body:                            body,
 	}, nil
