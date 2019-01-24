@@ -72,8 +72,15 @@ func NewRequest(req *http.Request) (*Request, error) {
 		}
 	}
 
+	// override the Host header
+	header := req.Header
+	if req.Host != "" && header.Get("Host") != req.Host {
+		header := cloneHeader(header)
+		header.Set("Host", req.Host)
+	}
+
 	h := make(map[string]string)
-	for k, v := range req.Header {
+	for k, v := range header {
 		if len(v) > 0 {
 			h[k] = v[len(v)-1]
 		}
@@ -90,7 +97,7 @@ func NewRequest(req *http.Request) (*Request, error) {
 		QueryStringParameters:           q,
 		MultiValueQueryStringParameters: map[string][]string(query),
 		Headers:                         h,
-		MultiValueHeaders:               map[string][]string(req.Header),
+		MultiValueHeaders:               map[string][]string(header),
 		IsBase64Encoded:                 isBase64,
 		Body:                            body,
 	}, nil
