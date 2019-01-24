@@ -71,16 +71,36 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		header.Set("Host", host)
 	}
 
-	// parse request
-	request, err := NewRequest(req2)
+	resp, err := p.roundTrip(req2)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+	removeConnectionHeaders(http.Header(resp.MultiValueHeaders))
+	for _, h := range hopHeaders {
+		http.Header(resp.MultiValueHeaders).Del(h)
+	}
+	resp.WriteTo(w)
+}
+
+// RoundTrip implements the http.RoundTripper interface.
+func (p *Proxy) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := p.roundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Response()
+}
+
+func (p *Proxy) roundTrip(req *http.Request) (*Response, error) {
+	// parse request
+	request, err := NewRequest(req)
+	if err != nil {
+		return nil, err
+	}
 	payload, err := json.Marshal(request)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
 	// invoke the lambda function
@@ -91,15 +111,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.SetContext(req.Context())
 	response, err := r.Send()
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
 	// build the response
 	var resp Response
 	if err := json.Unmarshal(response.Payload, &resp); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
+		return nil, err
 	}
-	resp.WriteTo(w)
+	return &resp, nil
 }

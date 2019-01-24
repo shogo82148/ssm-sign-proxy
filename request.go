@@ -3,6 +3,7 @@ package proxy
 import (
 	"encoding/base64"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -190,10 +191,6 @@ func (resp *Response) WriteTo(w http.ResponseWriter) error {
 			header.Add(k, v)
 		}
 	}
-	removeConnectionHeaders(header)
-	for _, h := range hopHeaders {
-		header.Del(h)
-	}
 
 	// parse the body
 	var body []byte
@@ -213,6 +210,37 @@ func (resp *Response) WriteTo(w http.ResponseWriter) error {
 
 	_, err := w.Write(body)
 	return err
+}
+
+// Response returns http.Response.
+func (resp *Response) Response() (*http.Response, error) {
+	var header http.Header
+	if len(resp.MultiValueHeaders) > 0 {
+		header = http.Header(resp.MultiValueHeaders)
+	} else {
+		header = http.Header{}
+		for k, v := range resp.Headers {
+			header.Set(k, v)
+		}
+	}
+
+	var body io.Reader = strings.NewReader(resp.Body)
+	length := int64(len(resp.Body))
+	if resp.IsBase64Encoded {
+		body = base64.NewDecoder(base64.StdEncoding, body)
+		length = int64(base64.StdEncoding.DecodedLen(len(resp.Body)))
+	}
+
+	return &http.Response{
+		Status:        resp.StatusDescription,
+		StatusCode:    resp.StatusCode,
+		Proto:         "HTTP/1.0",
+		ProtoMajor:    1,
+		ProtoMinor:    0,
+		Header:        header,
+		Body:          ioutil.NopCloser(body),
+		ContentLength: length,
+	}, nil
 }
 
 func cloneHeader(h http.Header) http.Header {
