@@ -65,6 +65,12 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	*req2 = *req
 	req2.Header = header
 
+	if host := req2.URL.Host; host != "" {
+		// work as a forward proxy
+		req2.Host = host
+		header.Set("Host", host)
+	}
+
 	// parse request
 	request, err := NewRequest(req2)
 	if err != nil {

@@ -19,7 +19,7 @@ func TestProxyServeHTTP(t *testing.T) {
 		Config:       cfg,
 		FunctionName: "proxy-test",
 	}
-	req := httptest.NewRequest(http.MethodGet, "/foobar", nil)
+	req := httptest.NewRequest(http.MethodGet, "https://example.com/foobar", nil)
 	rec := httptest.NewRecorder()
 	p.ServeHTTP(rec, req)
 	t.Log(rec.Body)
