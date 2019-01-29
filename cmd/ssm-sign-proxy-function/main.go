@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/aws/external"
@@ -15,6 +16,7 @@ func main() {
 	}
 	l := &proxy.Lambda{
 		Config: cfg,
+		Prefix: os.Getenv("SSM_SIGN_PROXY_PREFIX"),
 	}
 
 	lambda.Start(l.Handle)
