@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/aws/external"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/lambdaiface"
 )
@@ -22,13 +21,8 @@ type lambdaMock struct {
 }
 
 func TestProxyServeHTTP(t *testing.T) {
-	cfg, err := external.LoadDefaultAWSConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
 	l := &lambdaMock{}
 	p := &Proxy{
-		Config:       cfg,
 		FunctionName: "proxy-test",
 		scvlambda:    l,
 	}
