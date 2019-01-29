@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"path"
 	"strings"
@@ -17,6 +16,7 @@ import (
 type Lambda struct {
 	Config aws.Config
 	Prefix string
+	Client *http.Client
 
 	mu     sync.RWMutex
 	svcssm ssmiface.SSMAPI
@@ -31,6 +31,13 @@ func (l *Lambda) ssm() ssmiface.SSMAPI {
 	return l.svcssm
 }
 
+func (l *Lambda) client() *http.Client {
+	if l.Client != nil {
+		return l.Client
+	}
+	return http.DefaultClient
+}
+
 // Handle hanles events of the AWS Lambda.
 func (l *Lambda) Handle(ctx context.Context, req *Request) (*Response, error) {
 	host := http.Header(req.MultiValueHeaders).Get("Host")
@@ -38,7 +45,6 @@ func (l *Lambda) Handle(ctx context.Context, req *Request) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Println(param)
 
 	httpreq, err := req.Request()
 	if err != nil {
@@ -48,9 +54,8 @@ func (l *Lambda) Handle(ctx context.Context, req *Request) (*Response, error) {
 	if err := param.Sign(httpreq); err != nil {
 		return nil, err
 	}
-	log.Println(httpreq.Header)
 
-	resp, err := http.DefaultClient.Do(httpreq)
+	resp, err := l.client().Do(httpreq)
 	if err != nil {
 		return nil, err
 	}

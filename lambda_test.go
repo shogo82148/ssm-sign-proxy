@@ -2,23 +2,42 @@ package proxy
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
-	"github.com/aws/aws-sdk-go-v2/aws/external"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/ssmiface"
 )
 
+type ssmMock struct {
+	ssmiface.SSMAPI
+	url   string
+	input *ssm.GetParametersByPathInput
+}
+
 func TestLambdaHandle(t *testing.T) {
-	cfg, err := external.LoadDefaultAWSConfig()
-	if err != nil {
-		t.Fatal(err)
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		secret := req.Header.Get("Secret-Key")
+		if secret != "very-secret" {
+			t.Errorf("want %s, got %s", "very secret", secret)
+		}
+		fmt.Fprint(w, "ok")
+	}))
+	defer ts.Close()
+
+	mock := &ssmMock{
+		url: ts.URL,
 	}
 	l := &Lambda{
-		Config: cfg,
 		Prefix: "development",
+		Client: ts.Client(),
+		svcssm: mock,
 	}
-	req := httptest.NewRequest(http.MethodGet, "https://api.mackerelio.com/api/v0/services", nil)
+	req := httptest.NewRequest(http.MethodGet, ts.URL, nil)
 	r, err := NewRequest(req)
 	if err != nil {
 		t.Fatal(err)
@@ -27,5 +46,49 @@ func TestLambdaHandle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log(resp)
+	if resp.Body != "ok" {
+		t.Errorf("want %s, got %s", "ok", resp.Body)
+	}
+
+	u, err := url.Parse(mock.url)
+	if err != nil {
+		panic(err)
+	}
+	if aws.StringValue(mock.input.Path) != "/development/"+u.Host {
+		t.Errorf("want %s, goit %s", "/development/"+u.Host, aws.StringValue(mock.input.Path))
+	}
+}
+
+func (mock *ssmMock) GetParametersByPathRequest(input *ssm.GetParametersByPathInput) ssm.GetParametersByPathRequest {
+	mock.input = input
+	u, err := url.Parse(mock.url)
+	if err != nil {
+		panic(err)
+	}
+	out := &ssm.GetParametersByPathOutput{
+		Parameters: []ssm.Parameter{
+			{
+				Name:  aws.String("/development/" + u.Host + "/headers/secret-key"),
+				Value: aws.String("very-secret"),
+			},
+		},
+	}
+	return ssm.GetParametersByPathRequest{
+		Request: &aws.Request{
+			Data:        out,
+			HTTPRequest: &http.Request{},
+			Operation:   &aws.Operation{},
+		},
+		Input: input,
+		Copy: func(*ssm.GetParametersByPathInput) ssm.GetParametersByPathRequest {
+			return ssm.GetParametersByPathRequest{
+				Request: &aws.Request{
+					Data:        out,
+					HTTPRequest: &http.Request{},
+					Operation:   &aws.Operation{},
+				},
+				Input: &ssm.GetParametersByPathInput{},
+			}
+		},
+	}
 }
