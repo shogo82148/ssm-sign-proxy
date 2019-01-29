@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
+	"github.com/aws/aws-sdk-go-v2/service/lambda/lambdaiface"
 )
 
 // Hop-by-hop headers. These are removed when sent to the backend.
@@ -34,10 +35,10 @@ type Proxy struct {
 	FunctionName string
 
 	mu        sync.Mutex
-	scvlambda *lambda.Lambda
+	scvlambda lambdaiface.LambdaAPI
 }
 
-func (p *Proxy) lambda() *lambda.Lambda {
+func (p *Proxy) lambda() lambdaiface.LambdaAPI {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.scvlambda == nil {
