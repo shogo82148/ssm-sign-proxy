@@ -76,7 +76,7 @@ func NewRequest(req *http.Request) (*Request, error) {
 	// override the Host header
 	header := req.Header
 	if req.Host != "" && header.Get("Host") != req.Host {
-		header := cloneHeader(header)
+		header = cloneHeader(header)
 		header.Set("Host", req.Host)
 	}
 
