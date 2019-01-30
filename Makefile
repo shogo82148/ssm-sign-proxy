@@ -7,6 +7,7 @@ GOARCH=$(shell go env GOARCH)
 VERSION=$(patsubst "%",%,$(lastword $(shell grep 'const Version' version.go)))
 ARTIFACTS_DIR=$(CURDIR)/artifacts/$(VERSION)
 RELEASE_DIR=$(CURDIR)/release/$(VERSION)
+LATEST_DIR=$(CURDIR)/release/latest
 SRC_FILES=$(shell find . -type f -name '*.go')
 
 all: build-windows-amd64 build-linux-amd64 build-darwin-amd64 build-function ## Build binaries.
@@ -80,10 +81,31 @@ release-zip: build $(RELEASE_DIR)/ssm-sign-proxy_$(GOOS)_$(GOARCH)
 $(RELEASE_DIR)/ssm-sign-proxy-function:
 	@mkdir -p $@
 
-release-function: $(ARTIFACTS_DIR)/ssm-sign-proxy-function/ssm-sign-proxy-function $(RELEASE_DIR)/ssm-sign-proxy-function
+$(LATEST_DIR):
+	@mkdir -p $@
+
+$(LATEST_DIR)/ssm-sign-proxy-function.zip: $(LATEST_DIR) $(RELEASE_DIR)/ssm-sign-proxy-function
+	cp $(RELEASE_DIR)/ssm-sign-proxy-function.zip $(LATEST_DIR)/ssm-sign-proxy-function.zip
+
+$(RELEASE_DIR)/ssm-sign-proxy-function.zip: $(ARTIFACTS_DIR)/ssm-sign-proxy-function/ssm-sign-proxy-function $(RELEASE_DIR)/ssm-sign-proxy-function
 	cd $(ARTIFACTS_DIR)/ssm-sign-proxy-function && zip -9 $(RELEASE_DIR)/ssm-sign-proxy-function.zip *
+
+release-function: $(LATEST_DIR)/ssm-sign-proxy-function.zip $(RELEASE_DIR)/ssm-sign-proxy-function.zip
 
 release-files: release-windows-amd64 release-linux-amd64 release-darwin-amd64 release-function
 
 release-upload: release-files
 	ghr -u $(GITHUB_USERNAME) --draft --replace v$(VERSION) $(RELEASE_DIR)
+
+##### AWS SAM
+
+.PHONY: release-sam
+
+release-sam: $(LATEST_DIR)/ssm-sign-proxy-function.zip template.yaml ## Release the application to AWS Serverless Application Repository
+	sam package \
+		--template-file template.yaml \
+		--output-template-file packaged.yaml \
+		--s3-bucket shogo82148-sam
+	sam publish \
+		--template packaged.yaml \
+		--region us-east-1
