@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: http proxy
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: ssm-sign-proxy
+    Description: http proxy with aws lambda
+    Author: Shogo Ichinose
+    SpdxLicenseId: MIT
+    LicenseUrl: LICENSE
+    ReadmeUrl: README.md
+    Labels: ['tests']
+    HomePageUrl: https://github.com/shogo82148/ssm-sign-proxy
+    SemanticVersion: 0.0.1
+    SourceCodeUrl: https://github.com/shogo82148/ssm-sign-proxy
+
+Parameters: 
+  Prefix: 
+    Type: String
+    Default: ""
+    Description: The prefix for AWS System Manager Parameter Store Paramers.
+
+Resources:
+  Proxy:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: ssm-sign-proxy
+      Runtime: go1.x
+      Timeout: 30
+      CodeUri: release/latest/ssm-sign-proxy-function.zip
+      Policies:
+        - AWSLambdaExecute # Managed Policy
+        - Version: '2012-10-17' # Policy Document
+          Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParametersByPath
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}"
+      Environment:
+        Variables:
+          SSM_SIGN_PROXY_PREFIX: !Ref Parameters
