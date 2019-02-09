@@ -15,8 +15,8 @@ all: build-windows-amd64 build-linux-amd64 build-darwin-amd64 build-function ## 
 .PHONY: all test clean help
 
 clean: ## Remove built files.
-	rm -rf $(ARTIFACTS_DIR)
-	rm -rf $(RELEASE_DIR)
+	rm -rf $(CURDIR)/artifacts
+	rm -rf $(CURDIR)/release
 
 test: ## Run test.
 	go test -v -race ./...
