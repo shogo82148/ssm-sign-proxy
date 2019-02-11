@@ -26,12 +26,13 @@ type Request struct {
 
 // RequestContext contains the information to identify the instance invoking the lambda
 type RequestContext struct {
-	Instance InstanceContext `json:"elb"`
+	Instance InstanceContext `json:"instance"`
 }
 
 // InstanceContext contains the information to identify the ARN invoking the lambda
 type InstanceContext struct {
-	// TODO: implement this
+	InstanceID string `json:"instance_id"`
+	Hostname   string `json:"hostname"`
 }
 
 // Response configures the response to be returned by the ALB Lambda target group for the request

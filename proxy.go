@@ -1,13 +1,17 @@
 package proxy
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/awserr"
@@ -40,6 +44,9 @@ type Proxy struct {
 
 	mu        sync.Mutex
 	scvlambda lambdaiface.LambdaAPI
+
+	once            sync.Once
+	instanceContext InstanceContext
 }
 
 func (p *Proxy) lambda() lambdaiface.LambdaAPI {
@@ -61,6 +68,36 @@ func (p *Proxy) errorHandler() func(http.ResponseWriter, *http.Request, error) {
 func defaultErrorHandler(w http.ResponseWriter, _ *http.Request, err error) {
 	http.Error(w, http.StatusText(http.StatusBadGateway), http.StatusBadGateway)
 	log.Println(err)
+}
+
+func (p *Proxy) initInstanceContext() {
+	p.once.Do(func() {
+		if name, err := os.Hostname(); err == nil {
+			p.instanceContext.Hostname = name
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		req, err := http.NewRequest(http.MethodGet, "http://169.254.169.254/latest/meta-data/instance-id", nil)
+		if err != nil {
+			return
+		}
+		req = req.WithContext(ctx)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return
+		}
+		var builder strings.Builder
+		if _, err := io.Copy(&builder, resp.Body); err != nil {
+			return
+		}
+		p.instanceContext.InstanceID = strings.TrimSpace(builder.String())
+	})
 }
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -147,6 +184,9 @@ func (p *Proxy) roundTrip(req *http.Request) (*Response, error) {
 	request, err := NewRequest(req)
 	if err != nil {
 		return nil, err
+	}
+	request.RequestContext = RequestContext{
+		Instance: p.instanceContext,
 	}
 	payload, err := json.Marshal(request)
 	if err != nil {
