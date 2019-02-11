@@ -9,6 +9,7 @@ ARTIFACTS_DIR=$(CURDIR)/artifacts/$(VERSION)
 RELEASE_DIR=$(CURDIR)/release/$(VERSION)
 LATEST_DIR=$(CURDIR)/release/latest
 SRC_FILES=$(shell find . -type f -name '*.go')
+GITHUB_USERNAME=shogo82148
 
 all: build-windows-amd64 build-linux-amd64 build-darwin-amd64 build-function ## Build binaries.
 
