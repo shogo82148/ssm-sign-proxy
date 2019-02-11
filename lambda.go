@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"sync"
@@ -86,6 +87,12 @@ type Parameter struct {
 	// basic authorization
 	User     string
 	Password string
+
+	// rewrite url
+	Path string
+
+	// general queries
+	Queries url.Values
 }
 
 // Sign adds authentication information to the request.
@@ -95,6 +102,17 @@ func (p *Parameter) Sign(req *http.Request) error {
 	}
 	if p.User != "" {
 		req.SetBasicAuth(p.User, p.Password)
+	}
+	q := req.URL.Query()
+	if len(p.Queries) > 0 {
+		for k := range p.Queries {
+			q.Set(k, p.Queries.Get(k))
+		}
+		req.URL.RawQuery = q.Encode()
+	}
+	if p.Path != "" {
+		req.URL.RawPath = p.Path
+		req.URL.Path = p.Path
 	}
 	return nil
 }
@@ -148,6 +166,16 @@ func (l *Lambda) getParam(ctx context.Context, host string) (*Parameter, error) 
 					case "password":
 						parameter.Password = aws.StringValue(param.Value)
 					}
+				case "rewrite":
+					switch name {
+					case "path":
+						parameter.Path = aws.StringValue(param.Value)
+					}
+				case "queries":
+					if parameter.Queries == nil {
+						parameter.Queries = url.Values{}
+					}
+					parameter.Queries.Set(name, aws.StringValue(param.Value))
 				}
 			}
 		}
