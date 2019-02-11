@@ -17,6 +17,11 @@ func init() {
 }
 
 func main() {
+	flag.Parse()
+	if functionName == "" {
+		log.Fatal("-function-name is missing")
+	}
+
 	cfg, err := external.LoadDefaultAWSConfig()
 	if err != nil {
 		log.Fatal(err)
