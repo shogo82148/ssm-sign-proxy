@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/awserr"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/lambdaiface"
 )
@@ -119,6 +121,22 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func (p *Proxy) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := p.roundTrip(req)
 	if err != nil {
+		if err, ok := err.(awserr.RequestFailure); ok {
+			msg := err.Error()
+			body := strings.NewReader(msg)
+			return &http.Response{
+				Status:     http.StatusText(err.StatusCode()),
+				StatusCode: err.StatusCode(),
+				Proto:      "HTTP/1.0",
+				ProtoMajor: 1,
+				ProtoMinor: 0,
+				Header: http.Header{
+					"Content-Type": []string{"text/plain; charset=utf-8"},
+				},
+				Body:          ioutil.NopCloser(body),
+				ContentLength: int64(len(msg)),
+			}, nil
+		}
 		return nil, err
 	}
 	return resp.Response()
