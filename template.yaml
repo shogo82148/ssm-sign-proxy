@@ -25,7 +25,7 @@ Resources:
   Proxy:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: ssm-sign-proxy
+      Handler: ssm-sign-proxy-function
       Runtime: go1.x
       Timeout: 30
       CodeUri: release/latest/ssm-sign-proxy-function.zip
