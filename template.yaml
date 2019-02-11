@@ -10,7 +10,7 @@ Metadata:
     SpdxLicenseId: MIT
     LicenseUrl: LICENSE
     ReadmeUrl: README.md
-    Labels: ['tests']
+    Labels: ['ssm', 'proxy']
     HomePageUrl: https://github.com/shogo82148/ssm-sign-proxy
     SemanticVersion: 0.0.1
     SourceCodeUrl: https://github.com/shogo82148/ssm-sign-proxy
