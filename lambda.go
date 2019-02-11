@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/ssmiface"
+	"golang.org/x/sync/singleflight"
 )
 
 // Lambda is a lambda function.
@@ -18,7 +19,9 @@ type Lambda struct {
 	Prefix string
 	Client *http.Client
 
+	group  singleflight.Group
 	mu     sync.RWMutex
+	cache  map[string]*Parameter
 	svcssm ssmiface.SSMAPI
 }
 
@@ -77,36 +80,65 @@ func (p *Parameter) Sign(req *http.Request) error {
 }
 
 func (l *Lambda) getParam(ctx context.Context, host string) (*Parameter, error) {
-	parameter := &Parameter{}
-	base := path.Join("/", l.Prefix, strings.ToLower(host))
+	host = strings.ToLower(host)
+	result := l.group.DoChan(host, func() (interface{}, error) {
+		// search from the cache.
+		l.mu.RLock()
+		if l.cache != nil && l.cache[host] != nil {
+			l.mu.RUnlock()
+			return l.cache[host], nil
+		}
+		l.mu.RUnlock()
 
-	svc := l.ssm()
-	req := svc.GetParametersByPathRequest(&ssm.GetParametersByPathInput{
-		Path:           aws.String(base),
-		Recursive:      aws.Bool(true),
-		WithDecryption: aws.Bool(true),
-	})
-	req.SetContext(ctx)
-	pager := req.Paginate()
-	for pager.Next() {
-		resp := pager.CurrentPage()
-		for _, param := range resp.Parameters {
-			name := strings.TrimPrefix(aws.StringValue(param.Name), base+"/")
-			name = strings.TrimSuffix(name, "/")
-			idx := strings.IndexByte(name, '/')
-			if idx < 0 {
-				continue
-			}
-			typ := name[:idx]
-			name = name[idx+1:]
-			switch typ {
-			case "headers":
-				if parameter.Headers == nil {
-					parameter.Headers = http.Header{}
+		// get from AWS SSM Parameter Store.
+		parameter := &Parameter{}
+		base := path.Join("/", l.Prefix, host)
+
+		svc := l.ssm()
+		req := svc.GetParametersByPathRequest(&ssm.GetParametersByPathInput{
+			Path:           aws.String(base),
+			Recursive:      aws.Bool(true),
+			WithDecryption: aws.Bool(true),
+		})
+		req.SetContext(context.Background())
+		pager := req.Paginate()
+		for pager.Next() {
+			resp := pager.CurrentPage()
+			for _, param := range resp.Parameters {
+				name := strings.TrimPrefix(aws.StringValue(param.Name), base+"/")
+				name = strings.TrimSuffix(name, "/")
+				idx := strings.IndexByte(name, '/')
+				if idx < 0 {
+					continue
 				}
-				parameter.Headers.Set(name, aws.StringValue(param.Value))
+				typ := name[:idx]
+				name = name[idx+1:]
+				switch typ {
+				case "headers":
+					if parameter.Headers == nil {
+						parameter.Headers = http.Header{}
+					}
+					parameter.Headers.Set(name, aws.StringValue(param.Value))
+				}
 			}
 		}
+
+		// set to the cache.
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		if l.cache == nil {
+			l.cache = make(map[string]*Parameter)
+		}
+		l.cache[host] = parameter
+		return parameter, nil
+	})
+	select {
+	case r := <-result:
+		if r.Err != nil {
+			return nil, r.Err
+		}
+		return r.Val.(*Parameter), nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
-	return parameter, nil
 }
