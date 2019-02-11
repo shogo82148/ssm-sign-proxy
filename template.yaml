@@ -30,15 +30,15 @@ Resources:
       Timeout: 30
       CodeUri: release/latest/ssm-sign-proxy-function.zip
       Policies:
-        - AWSLambdaExecute
         - Version: '2012-10-17'
           Statement:
             - Effect: Allow
               Action:
+                - ssm:GetParameters
                 - ssm:GetParametersByPath
               Resource:
-                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}/*"
-                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${Prefix}/*"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}*"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${Prefix}*"
       Environment:
         Variables:
           SSM_SIGN_PROXY_PREFIX: !Ref Prefix
