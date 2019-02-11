@@ -68,13 +68,21 @@ func (l *Lambda) Handle(ctx context.Context, req *Request) (*Response, error) {
 
 // Parameter is parameter for signing.
 type Parameter struct {
+	// general http headers
 	Headers http.Header
+
+	// basic authorization
+	User     string
+	Password string
 }
 
 // Sign adds authentication information to the request.
 func (p *Parameter) Sign(req *http.Request) error {
 	for k := range p.Headers {
 		req.Header.Set(k, p.Headers.Get(k))
+	}
+	if p.User != "" {
+		req.SetBasicAuth(p.User, p.Password)
 	}
 	return nil
 }
@@ -119,6 +127,13 @@ func (l *Lambda) getParam(ctx context.Context, host string) (*Parameter, error) 
 						parameter.Headers = http.Header{}
 					}
 					parameter.Headers.Set(name, aws.StringValue(param.Value))
+				case "basic":
+					switch name {
+					case "username":
+						parameter.User = aws.StringValue(param.Value)
+					case "password":
+						parameter.Password = aws.StringValue(param.Value)
+					}
 				}
 			}
 		}
