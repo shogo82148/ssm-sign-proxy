@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"path"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm/ssmiface"
 	"golang.org/x/sync/singleflight"
 )
+
+var errParamNotFound = errors.New("proxy: parameters not found")
 
 // Lambda is a lambda function.
 type Lambda struct {
@@ -51,6 +54,15 @@ func (l *Lambda) Handle(ctx context.Context, req *Request) (*Response, error) {
 
 	param, err := l.getParam(ctx, httpreq.Header.Get("Host"))
 	if err != nil {
+		if err == errParamNotFound {
+			return &Response{
+				StatusCode: http.StatusProxyAuthRequired,
+				Headers: map[string]string{
+					"Content-Type": "text/plain; charset=utf-8",
+				},
+				Body: "any parameters for signing is not found in AWS System Manager Parameter Store\n",
+			}, nil
+		}
 		return nil, err
 	}
 	if err := param.Sign(httpreq); err != nil {
@@ -110,9 +122,11 @@ func (l *Lambda) getParam(ctx context.Context, host string) (*Parameter, error) 
 		})
 		req.SetContext(context.Background())
 		pager := req.Paginate()
+		cnt := 0
 		for pager.Next() {
 			resp := pager.CurrentPage()
 			for _, param := range resp.Parameters {
+				cnt++
 				name := strings.TrimPrefix(aws.StringValue(param.Name), base+"/")
 				name = strings.TrimSuffix(name, "/")
 				idx := strings.IndexByte(name, '/')
@@ -136,6 +150,9 @@ func (l *Lambda) getParam(ctx context.Context, host string) (*Parameter, error) 
 					}
 				}
 			}
+		}
+		if cnt == 0 {
+			return nil, errParamNotFound
 		}
 
 		// set to the cache.
