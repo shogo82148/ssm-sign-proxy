@@ -40,17 +40,16 @@ func (l *Lambda) client() *http.Client {
 
 // Handle hanles events of the AWS Lambda.
 func (l *Lambda) Handle(ctx context.Context, req *Request) (*Response, error) {
-	host := http.Header(req.MultiValueHeaders).Get("Host")
-	param, err := l.getParam(ctx, host)
-	if err != nil {
-		return nil, err
-	}
-
 	httpreq, err := req.Request()
 	if err != nil {
 		return nil, err
 	}
 	httpreq = httpreq.WithContext(ctx)
+
+	param, err := l.getParam(ctx, httpreq.Header.Get("Host"))
+	if err != nil {
+		return nil, err
+	}
 	if err := param.Sign(httpreq); err != nil {
 		return nil, err
 	}

@@ -109,9 +109,14 @@ func (req *Request) Request() (*http.Request, error) {
 	// build the headers
 	var h http.Header
 	if len(req.MultiValueHeaders) > 0 {
-		h = http.Header(req.MultiValueHeaders)
+		h = make(http.Header, len(req.MultiValueHeaders))
+		for k, vv := range req.MultiValueHeaders {
+			for _, v := range vv {
+				h.Add(k, v)
+			}
+		}
 	} else {
-		h = http.Header{}
+		h = make(http.Header, len(req.Headers))
 		for k, v := range req.Headers {
 			h.Set(k, v)
 		}
@@ -199,9 +204,14 @@ func (resp *Response) WriteTo(w http.ResponseWriter) error {
 func (resp *Response) Response() (*http.Response, error) {
 	var header http.Header
 	if len(resp.MultiValueHeaders) > 0 {
-		header = http.Header(resp.MultiValueHeaders)
+		header = make(http.Header, len(resp.MultiValueHeaders))
+		for k, vv := range resp.MultiValueHeaders {
+			for _, v := range vv {
+				header.Add(k, v)
+			}
+		}
 	} else {
-		header = http.Header{}
+		header = make(http.Header, len(resp.Headers))
 		for k, v := range resp.Headers {
 			header.Set(k, v)
 		}
