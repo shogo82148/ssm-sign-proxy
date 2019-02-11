@@ -84,7 +84,7 @@ $(RELEASE_DIR)/ssm-sign-proxy-function:
 $(LATEST_DIR):
 	@mkdir -p $@
 
-$(LATEST_DIR)/ssm-sign-proxy-function.zip: $(LATEST_DIR) $(RELEASE_DIR)/ssm-sign-proxy-function
+$(LATEST_DIR)/ssm-sign-proxy-function.zip: $(LATEST_DIR) $(RELEASE_DIR)/ssm-sign-proxy-function.zip
 	cp $(RELEASE_DIR)/ssm-sign-proxy-function.zip $(LATEST_DIR)/ssm-sign-proxy-function.zip
 
 $(RELEASE_DIR)/ssm-sign-proxy-function.zip: $(ARTIFACTS_DIR)/ssm-sign-proxy-function/ssm-sign-proxy-function $(RELEASE_DIR)/ssm-sign-proxy-function

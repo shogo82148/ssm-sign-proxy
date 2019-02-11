@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"encoding/json"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -33,6 +34,7 @@ var hopHeaders = []string{
 type Proxy struct {
 	Config       aws.Config
 	FunctionName string
+	ErrorHandler func(http.ResponseWriter, *http.Request, error)
 
 	mu        sync.Mutex
 	scvlambda lambdaiface.LambdaAPI
@@ -45,6 +47,18 @@ func (p *Proxy) lambda() lambdaiface.LambdaAPI {
 		p.scvlambda = lambda.New(p.Config)
 	}
 	return p.scvlambda
+}
+
+func (p *Proxy) errorHandler() func(http.ResponseWriter, *http.Request, error) {
+	if p.ErrorHandler != nil {
+		return p.ErrorHandler
+	}
+	return defaultErrorHandler
+}
+
+func defaultErrorHandler(w http.ResponseWriter, _ *http.Request, err error) {
+	http.Error(w, http.StatusText(http.StatusBadGateway), http.StatusBadGateway)
+	log.Println(err)
 }
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -91,7 +105,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	resp, err := p.roundTrip(req2)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		p.errorHandler()(w, req, err)
 		return
 	}
 	removeConnectionHeaders(http.Header(resp.MultiValueHeaders))
@@ -130,6 +144,9 @@ func (p *Proxy) roundTrip(req *http.Request) (*Response, error) {
 	response, err := r.Send()
 	if err != nil {
 		return nil, err
+	}
+	if response.FunctionError != nil {
+		return nil, parseError(response.Payload)
 	}
 
 	// build the response
