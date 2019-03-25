@@ -110,9 +110,15 @@ func (p *Parameter) Sign(req *http.Request) error {
 		}
 		req.URL.RawQuery = q.Encode()
 	}
-	if p.Path != "" {
-		req.URL.RawPath = p.Path
-		req.URL.Path = p.Path
+	if path := p.Path; path != "" {
+		if path[0] != '/' {
+			path = "/" + path
+		}
+		u, err := req.URL.Parse(path)
+		if err != nil {
+			return err
+		}
+		req.URL = u
 	}
 	return nil
 }
