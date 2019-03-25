@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/lambdaiface"
+	"github.com/google/go-cmp/cmp"
 )
 
 var _ http.Handler = &Proxy{}
@@ -26,7 +26,7 @@ func TestProxyServeHTTP(t *testing.T) {
 		FunctionName: "proxy-test",
 		scvlambda:    l,
 	}
-	httpreq := httptest.NewRequest(http.MethodGet, "https://example.com/foobar", nil)
+	httpreq := httptest.NewRequest(http.MethodGet, "https://example.com/foo%20bar", nil)
 	rec := httptest.NewRecorder()
 	p.ServeHTTP(rec, httpreq)
 
@@ -39,7 +39,7 @@ func TestProxyServeHTTP(t *testing.T) {
 	}
 	want := Request{
 		HTTPMethod: http.MethodGet,
-		Path:       "/foobar",
+		Path:       "/foo%20bar",
 		Headers: map[string]string{
 			"Host":            "example.com",
 			"X-Forwarded-For": "192.0.2.1",
@@ -49,8 +49,8 @@ func TestProxyServeHTTP(t *testing.T) {
 			"X-Forwarded-For": []string{"192.0.2.1"},
 		},
 	}
-	if !reflect.DeepEqual(req, want) {
-		t.Errorf("want %#v, got %#v", want, req)
+	if diff := cmp.Diff(req, want); diff != "" {
+		t.Errorf("Request differs: (-got +want)\n%s", diff)
 	}
 	if rec.Code != http.StatusOK {
 		t.Errorf("want %d, got %d", http.StatusOK, rec.Code)
