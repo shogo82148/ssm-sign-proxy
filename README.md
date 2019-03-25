@@ -1,3 +1,6 @@
+[![Build Status](https://travis-ci.com/shogo82148/ssm-sign-proxy.svg?branch=master)](https://travis-ci.com/shogo82148/ssm-sign-proxy)
+[![Coverage Status](https://coveralls.io/repos/github/shogo82148/ssm-sign-proxy/badge.svg?branch=master)](https://coveralls.io/github/shogo82148/ssm-sign-proxy?branch=master)
+
 # ssm-sign-proxy
 A proxy which signs requests using AWS System Manager Parameter Store.
 
