@@ -25,6 +25,7 @@ Resources:
   Proxy:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "${AWS::StackName}"
       Handler: ssm-sign-proxy-function
       Runtime: go1.x
       Timeout: 30
