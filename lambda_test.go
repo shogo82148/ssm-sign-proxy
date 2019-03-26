@@ -136,8 +136,10 @@ func TestLambdaHandle(t *testing.T) {
 
 	t.Run("rewrite", func(t *testing.T) {
 		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			if req.RequestURI != "/very/%20secret%2f/path" {
-				t.Errorf("unexpected request uri: got %s, want /very/%%20secret%%2f/path", req.RequestURI)
+			if req.URL.EscapedPath() != "/very/%20secret%2f/path" {
+				t.Errorf("unexpected request uri: got %s, want /very/%%20secret%%2f/path", req.URL.EscapedPath())
+				http.Error(w, "NG", http.StatusForbidden)
+				return
 			}
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprint(w, "ok")
@@ -164,6 +166,63 @@ func TestLambdaHandle(t *testing.T) {
 			svcssm: mock,
 		}
 		req := httptest.NewRequest(http.MethodGet, ts.URL+"/dummy/path", nil)
+		r, err := NewRequest(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := l.Handle(context.Background(), r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.Body != "ok" {
+			t.Errorf("want %s, got %s", "ok", resp.Body)
+		}
+
+		if aws.StringValue(mock.input.Path) != "/development/"+u.Host {
+			t.Errorf("want %s, goit %s", "/development/"+u.Host, aws.StringValue(mock.input.Path))
+		}
+	})
+
+	t.Run("queries", func(t *testing.T) {
+		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.URL.EscapedPath() != "/very/%20secret%2f/path" {
+				t.Errorf("unexpected request uri: got %s, want /very/%%20secret%%2f/path", req.URL.EscapedPath())
+				http.Error(w, "NG", http.StatusForbidden)
+				return
+			}
+			q := req.URL.Query()
+			if q.Get("apikey") != "very secret%!#WE^T&*" {
+				t.Errorf("unexpected api key: got %s, wnt %s", q.Get("apikey"), "very secret%!#WE^T&*")
+			}
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "ok")
+		}))
+		defer ts.Close()
+
+		u, err := url.Parse(ts.URL)
+		if err != nil {
+			panic(err)
+		}
+		mock := &ssmMock{
+			output: &ssm.GetParametersByPathOutput{
+				Parameters: []ssm.Parameter{
+					{
+						Name:  aws.String("/development/" + u.Host + "/queries/apikey"),
+						Value: aws.String("very secret%!#WE^T&*"),
+					},
+					{
+						Name:  aws.String("/development/" + u.Host + "/rewrite/path"),
+						Value: aws.String("very/%20secret%2f/path"),
+					},
+				},
+			},
+		}
+		l := &Lambda{
+			Prefix: "development",
+			Client: ts.Client(),
+			svcssm: mock,
+		}
+		req := httptest.NewRequest(http.MethodGet, ts.URL, nil)
 		r, err := NewRequest(req)
 		if err != nil {
 			t.Fatal(err)

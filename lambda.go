@@ -103,13 +103,6 @@ func (p *Parameter) Sign(req *http.Request) error {
 	if p.User != "" {
 		req.SetBasicAuth(p.User, p.Password)
 	}
-	q := req.URL.Query()
-	if len(p.Queries) > 0 {
-		for k := range p.Queries {
-			q.Set(k, p.Queries.Get(k))
-		}
-		req.URL.RawQuery = q.Encode()
-	}
 	if path := p.Path; path != "" {
 		if path[0] != '/' {
 			path = "/" + path
@@ -119,6 +112,13 @@ func (p *Parameter) Sign(req *http.Request) error {
 			return err
 		}
 		req.URL = u
+	}
+	q := req.URL.Query()
+	if len(p.Queries) > 0 {
+		for k := range p.Queries {
+			q.Set(k, p.Queries.Get(k))
+		}
+		req.URL.RawQuery = q.Encode()
 	}
 	return nil
 }
