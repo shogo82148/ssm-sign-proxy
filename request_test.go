@@ -3,21 +3,22 @@ package proxy
 import (
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestRequestRequest(t *testing.T) {
 	t.Run("get", func(t *testing.T) {
-		httpreq := httptest.NewRequest(http.MethodGet, "http://example.com/foobar", nil)
+		httpreq := httptest.NewRequest(http.MethodGet, "http://example.com/foo%20bar", nil)
 		req, err := NewRequest(httpreq)
 		if err != nil {
 			t.Fatal(err)
 		}
 		want := &Request{
 			HTTPMethod:                      http.MethodGet,
-			Path:                            "/foobar",
+			Path:                            "/foo%20bar",
 			QueryStringParameters:           map[string]string{},
 			MultiValueQueryStringParameters: map[string][]string{},
 			Headers: map[string]string{
@@ -29,15 +30,15 @@ func TestRequestRequest(t *testing.T) {
 			IsBase64Encoded: false,
 			Body:            "",
 		}
-		if !reflect.DeepEqual(req, want) {
-			t.Errorf("want %#v, got %#v", want, req)
+		if diff := cmp.Diff(req, want); diff != "" {
+			t.Errorf("Request differs: (-got +want)\n%s", diff)
 		}
 	})
 
 	t.Run("post", func(t *testing.T) {
 		str := `{"hello":"world"}`
 		r := strings.NewReader(str)
-		httpreq := httptest.NewRequest(http.MethodPost, "http://example.com/foobar", r)
+		httpreq := httptest.NewRequest(http.MethodPost, "http://example.com/foo%2fbar", r)
 		httpreq.Header.Set("Content-Type", "application/json; charset=utf-8")
 		req, err := NewRequest(httpreq)
 		if err != nil {
@@ -45,7 +46,7 @@ func TestRequestRequest(t *testing.T) {
 		}
 		want := &Request{
 			HTTPMethod:                      http.MethodPost,
-			Path:                            "/foobar",
+			Path:                            "/foo%2fbar",
 			QueryStringParameters:           map[string]string{},
 			MultiValueQueryStringParameters: map[string][]string{},
 			Headers: map[string]string{
@@ -59,8 +60,8 @@ func TestRequestRequest(t *testing.T) {
 			IsBase64Encoded: false,
 			Body:            `{"hello":"world"}`,
 		}
-		if !reflect.DeepEqual(req, want) {
-			t.Errorf("want %#v, got %#v", want, req)
+		if diff := cmp.Diff(req, want); diff != "" {
+			t.Errorf("Request differs: (-got +want)\n%s", diff)
 		}
 	})
 }

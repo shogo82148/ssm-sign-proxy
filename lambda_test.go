@@ -15,67 +15,276 @@ import (
 
 type ssmMock struct {
 	ssmiface.SSMAPI
-	url   string
-	input *ssm.GetParametersByPathInput
+	input  *ssm.GetParametersByPathInput
+	output *ssm.GetParametersByPathOutput
 }
 
 func TestLambdaHandle(t *testing.T) {
-	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		secret := req.Header.Get("Secret-Key")
-		if secret != "very-secret" {
-			t.Errorf("want %s, got %s", "very secret", secret)
+	t.Run("headers", func(t *testing.T) {
+		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			secret := req.Header.Get("Secret-Key")
+			if secret != "very-secret" {
+				t.Errorf("want %s, got %s", "very secret", secret)
+				http.Error(w, "NG", http.StatusForbidden)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "ok")
+		}))
+		defer ts.Close()
+
+		u, err := url.Parse(ts.URL)
+		if err != nil {
+			panic(err)
 		}
-		fmt.Fprint(w, "ok")
-	}))
-	defer ts.Close()
+		mock := &ssmMock{
+			output: &ssm.GetParametersByPathOutput{
+				Parameters: []ssm.Parameter{
+					{
+						Name:  aws.String("/development/" + u.Host + "/headers/secret-key"),
+						Value: aws.String("very-secret"),
+					},
+				},
+			},
+		}
+		l := &Lambda{
+			Prefix: "development",
+			Client: ts.Client(),
+			svcssm: mock,
+		}
+		req := httptest.NewRequest(http.MethodGet, ts.URL, nil)
+		r, err := NewRequest(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := l.Handle(context.Background(), r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.Body != "ok" {
+			t.Errorf("want %s, got %s", "ok", resp.Body)
+		}
 
-	mock := &ssmMock{
-		url: ts.URL,
-	}
-	l := &Lambda{
-		Prefix: "development",
-		Client: ts.Client(),
-		svcssm: mock,
-	}
-	req := httptest.NewRequest(http.MethodGet, ts.URL, nil)
-	r, err := NewRequest(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp, err := l.Handle(context.Background(), r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Body != "ok" {
-		t.Errorf("want %s, got %s", "ok", resp.Body)
-	}
+		if aws.StringValue(mock.input.Path) != "/development/"+u.Host {
+			t.Errorf("want %s, goit %s", "/development/"+u.Host, aws.StringValue(mock.input.Path))
+		}
+	})
 
-	u, err := url.Parse(mock.url)
-	if err != nil {
-		panic(err)
-	}
-	if aws.StringValue(mock.input.Path) != "/development/"+u.Host {
-		t.Errorf("want %s, goit %s", "/development/"+u.Host, aws.StringValue(mock.input.Path))
-	}
+	t.Run("basic", func(t *testing.T) {
+		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			username, password, ok := req.BasicAuth()
+			if !ok {
+				t.Error("Authorization not found")
+				http.Error(w, "NG", http.StatusUnauthorized)
+				return
+			}
+			if username != "chooblarin" {
+				t.Errorf("invalid username: got %s, want chooblarin", username)
+				http.Error(w, "NG", http.StatusForbidden)
+				return
+			}
+			if password != "very-secret" {
+				t.Errorf("invalid password: got %s, want very-secret", username)
+				http.Error(w, "NG", http.StatusForbidden)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "ok")
+		}))
+		defer ts.Close()
+
+		u, err := url.Parse(ts.URL)
+		if err != nil {
+			panic(err)
+		}
+		mock := &ssmMock{
+			output: &ssm.GetParametersByPathOutput{
+				Parameters: []ssm.Parameter{
+					{
+						Name:  aws.String("/development/" + u.Host + "/basic/username"),
+						Value: aws.String("chooblarin"),
+					},
+					{
+						Name:  aws.String("/development/" + u.Host + "/basic/password"),
+						Value: aws.String("very-secret"),
+					},
+				},
+			},
+		}
+		l := &Lambda{
+			Prefix: "development",
+			Client: ts.Client(),
+			svcssm: mock,
+		}
+		req := httptest.NewRequest(http.MethodGet, ts.URL, nil)
+		r, err := NewRequest(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := l.Handle(context.Background(), r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.Body != "ok" {
+			t.Errorf("want %s, got %s", "ok", resp.Body)
+		}
+
+		if aws.StringValue(mock.input.Path) != "/development/"+u.Host {
+			t.Errorf("want %s, goit %s", "/development/"+u.Host, aws.StringValue(mock.input.Path))
+		}
+	})
+
+	t.Run("rewrite", func(t *testing.T) {
+		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.URL.EscapedPath() != "/very/%20secret%2f/path" {
+				t.Errorf("unexpected request uri: got %s, want /very/%%20secret%%2f/path", req.URL.EscapedPath())
+				http.Error(w, "NG", http.StatusForbidden)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "ok")
+		}))
+		defer ts.Close()
+
+		u, err := url.Parse(ts.URL)
+		if err != nil {
+			panic(err)
+		}
+		mock := &ssmMock{
+			output: &ssm.GetParametersByPathOutput{
+				Parameters: []ssm.Parameter{
+					{
+						Name:  aws.String("/development/" + u.Host + "/rewrite/path"),
+						Value: aws.String("very/%20secret%2f/path"),
+					},
+				},
+			},
+		}
+		l := &Lambda{
+			Prefix: "development",
+			Client: ts.Client(),
+			svcssm: mock,
+		}
+		req := httptest.NewRequest(http.MethodGet, ts.URL+"/dummy/path", nil)
+		r, err := NewRequest(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := l.Handle(context.Background(), r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.Body != "ok" {
+			t.Errorf("want %s, got %s", "ok", resp.Body)
+		}
+
+		if aws.StringValue(mock.input.Path) != "/development/"+u.Host {
+			t.Errorf("want %s, goit %s", "/development/"+u.Host, aws.StringValue(mock.input.Path))
+		}
+	})
+
+	t.Run("queries", func(t *testing.T) {
+		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.URL.EscapedPath() != "/very/%20secret%2f/path" {
+				t.Errorf("unexpected request uri: got %s, want /very/%%20secret%%2f/path", req.URL.EscapedPath())
+				http.Error(w, "NG", http.StatusForbidden)
+				return
+			}
+			q := req.URL.Query()
+			if q.Get("apikey") != "very secret%!#WE^T&*" {
+				t.Errorf("unexpected api key: got %s, wnt %s", q.Get("apikey"), "very secret%!#WE^T&*")
+			}
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "ok")
+		}))
+		defer ts.Close()
+
+		u, err := url.Parse(ts.URL)
+		if err != nil {
+			panic(err)
+		}
+		mock := &ssmMock{
+			output: &ssm.GetParametersByPathOutput{
+				Parameters: []ssm.Parameter{
+					{
+						Name:  aws.String("/development/" + u.Host + "/queries/apikey"),
+						Value: aws.String("very secret%!#WE^T&*"),
+					},
+					{
+						Name:  aws.String("/development/" + u.Host + "/rewrite/path"),
+						Value: aws.String("very/%20secret%2f/path"),
+					},
+				},
+			},
+		}
+		l := &Lambda{
+			Prefix: "development",
+			Client: ts.Client(),
+			svcssm: mock,
+		}
+		req := httptest.NewRequest(http.MethodGet, ts.URL, nil)
+		r, err := NewRequest(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := l.Handle(context.Background(), r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.Body != "ok" {
+			t.Errorf("want %s, got %s", "ok", resp.Body)
+		}
+
+		if aws.StringValue(mock.input.Path) != "/development/"+u.Host {
+			t.Errorf("want %s, goit %s", "/development/"+u.Host, aws.StringValue(mock.input.Path))
+		}
+	})
+
+	t.Run("sign-not-found", func(t *testing.T) {
+		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			t.Error("never call")
+			http.Error(w, "NG", http.StatusForbidden)
+		}))
+		defer ts.Close()
+
+		u, err := url.Parse(ts.URL)
+		if err != nil {
+			panic(err)
+		}
+		mock := &ssmMock{
+			output: &ssm.GetParametersByPathOutput{
+				Parameters: []ssm.Parameter{},
+			},
+		}
+		l := &Lambda{
+			Prefix: "development",
+			Client: ts.Client(),
+			svcssm: mock,
+		}
+		req := httptest.NewRequest(http.MethodGet, ts.URL, nil)
+		r, err := NewRequest(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := l.Handle(context.Background(), r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusProxyAuthRequired {
+			t.Errorf("want %d, got %d", http.StatusProxyAuthRequired, resp.StatusCode)
+		}
+
+		if aws.StringValue(mock.input.Path) != "/development/"+u.Host {
+			t.Errorf("want %s, goit %s", "/development/"+u.Host, aws.StringValue(mock.input.Path))
+		}
+	})
 }
 
 func (mock *ssmMock) GetParametersByPathRequest(input *ssm.GetParametersByPathInput) ssm.GetParametersByPathRequest {
 	mock.input = input
-	u, err := url.Parse(mock.url)
-	if err != nil {
-		panic(err)
-	}
-	out := &ssm.GetParametersByPathOutput{
-		Parameters: []ssm.Parameter{
-			{
-				Name:  aws.String("/development/" + u.Host + "/headers/secret-key"),
-				Value: aws.String("very-secret"),
-			},
-		},
-	}
 	return ssm.GetParametersByPathRequest{
 		Request: &aws.Request{
-			Data:        out,
+			Data:        mock.output,
 			HTTPRequest: &http.Request{},
 			Operation:   &aws.Operation{},
 		},
@@ -83,7 +292,7 @@ func (mock *ssmMock) GetParametersByPathRequest(input *ssm.GetParametersByPathIn
 		Copy: func(*ssm.GetParametersByPathInput) ssm.GetParametersByPathRequest {
 			return ssm.GetParametersByPathRequest{
 				Request: &aws.Request{
-					Data:        out,
+					Data:        mock.output,
 					HTTPRequest: &http.Request{},
 					Operation:   &aws.Operation{},
 				},

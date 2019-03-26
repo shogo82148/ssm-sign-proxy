@@ -78,7 +78,7 @@ func NewRequest(req *http.Request) (*Request, error) {
 
 	return &Request{
 		HTTPMethod:                      req.Method,
-		Path:                            req.URL.Path,
+		Path:                            req.URL.EscapedPath(),
 		QueryStringParameters:           q,
 		MultiValueQueryStringParameters: map[string][]string(query),
 		Headers:                         h,
@@ -125,16 +125,17 @@ func (req *Request) Request() (*http.Request, error) {
 
 	// build the target url
 	host := h.Get("Host")
-	u := url.URL{
-		Scheme:   "https", // we don't care of http.
-		Host:     host,
-		Path:     req.Path,
-		RawPath:  req.Path,
-		RawQuery: q.Encode(),
+	var buf strings.Builder
+	buf.WriteString("https://") // we don't care of http. all api should be provided via https.
+	buf.WriteString(host)
+	buf.WriteString(req.Path)
+	if len(q) > 0 {
+		buf.WriteString("?")
+		buf.WriteString(q.Encode())
 	}
 
 	// build the request
-	httpreq, err := http.NewRequest(req.HTTPMethod, u.String(), body)
+	httpreq, err := http.NewRequest(req.HTTPMethod, buf.String(), body)
 	if err != nil {
 		return nil, err
 	}
