@@ -239,6 +239,45 @@ func TestLambdaHandle(t *testing.T) {
 			t.Errorf("want %s, goit %s", "/development/"+u.Host, aws.StringValue(mock.input.Path))
 		}
 	})
+
+	t.Run("sign-not-found", func(t *testing.T) {
+		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			t.Error("never call")
+			http.Error(w, "NG", http.StatusForbidden)
+		}))
+		defer ts.Close()
+
+		u, err := url.Parse(ts.URL)
+		if err != nil {
+			panic(err)
+		}
+		mock := &ssmMock{
+			output: &ssm.GetParametersByPathOutput{
+				Parameters: []ssm.Parameter{},
+			},
+		}
+		l := &Lambda{
+			Prefix: "development",
+			Client: ts.Client(),
+			svcssm: mock,
+		}
+		req := httptest.NewRequest(http.MethodGet, ts.URL, nil)
+		r, err := NewRequest(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := l.Handle(context.Background(), r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusProxyAuthRequired {
+			t.Errorf("want %d, got %d", http.StatusProxyAuthRequired, resp.StatusCode)
+		}
+
+		if aws.StringValue(mock.input.Path) != "/development/"+u.Host {
+			t.Errorf("want %s, goit %s", "/development/"+u.Host, aws.StringValue(mock.input.Path))
+		}
+	})
 }
 
 func (mock *ssmMock) GetParametersByPathRequest(input *ssm.GetParametersByPathInput) ssm.GetParametersByPathRequest {
