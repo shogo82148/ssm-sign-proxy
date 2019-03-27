@@ -18,6 +18,9 @@ all: build-windows-amd64 build-linux-amd64 build-darwin-amd64 build-function ## 
 clean: ## Remove built files.
 	rm -rf $(CURDIR)/artifacts
 	rm -rf $(CURDIR)/release
+	rm -rf $(CURDIR)/.mod
+	rm -rf $(CURDIR)/.aws-sam
+	rm -rf $(CURDIR)/.packaged.yaml
 
 test: ## Run test.
 	go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
